@@ -12,10 +12,13 @@ import (
 	"gofiber-template/domain/repositories"
 	"gofiber-template/domain/services"
 	"gofiber-template/pkg/config"
+	"gofiber-template/pkg/contextutil"
+	"gofiber-template/pkg/logger"
 
 	"github.com/google/uuid"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/facebook"
+	"golang.org/x/oauth2/google"
 	googleOAuth2 "google.golang.org/api/oauth2/v2"
 	"gorm.io/datatypes"
 )
@@ -46,10 +49,7 @@ func NewOAuthService(
 			"https://www.googleapis.com/auth/userinfo.email",
 			"https://www.googleapis.com/auth/userinfo.profile",
 		},
-		Endpoint: oauth2.Endpoint{
-			AuthURL:  "https://accounts.google.com/o/oauth2/auth",
-			TokenURL: "https://accounts.google.com/o/oauth2/token",
-		},
+		Endpoint: google.Endpoint, // Use official Google OAuth2 endpoints
 	}
 
 	// Facebook OAuth Config
@@ -91,9 +91,24 @@ func (s *oauthService) GetGoogleAuthURL(state string) string {
 }
 
 func (s *oauthService) HandleGoogleCallback(ctx context.Context, code string) (*models.User, string, bool, error) {
+	startTime := time.Now()
+	requestID := contextutil.GetRequestID(ctx)
+	log := logger.GetLogger()
+
+	log.Info("Google OAuth callback started", map[string]interface{}{
+		"request_id": requestID,
+		"action":     "oauth_google",
+		"provider":   "google",
+	})
+
 	// Exchange code for token
 	token, err := s.googleConfig.Exchange(ctx, code)
 	if err != nil {
+		log.Error("Google OAuth code exchange failed", map[string]interface{}{
+			"request_id": requestID,
+			"action":     "oauth_google",
+			"error":      err.Error(),
+		})
 		return nil, "", false, fmt.Errorf("failed to exchange code: %w", err)
 	}
 
@@ -101,11 +116,21 @@ func (s *oauthService) HandleGoogleCallback(ctx context.Context, code string) (*
 	client := s.googleConfig.Client(ctx, token)
 	oauth2Service, err := googleOAuth2.New(client)
 	if err != nil {
+		log.Error("Google OAuth2 service creation failed", map[string]interface{}{
+			"request_id": requestID,
+			"action":     "oauth_google",
+			"error":      err.Error(),
+		})
 		return nil, "", false, fmt.Errorf("failed to create oauth2 service: %w", err)
 	}
 
 	userInfo, err := oauth2Service.Userinfo.Get().Do()
 	if err != nil {
+		log.Error("Failed to get Google user info", map[string]interface{}{
+			"request_id": requestID,
+			"action":     "oauth_google",
+			"error":      err.Error(),
+		})
 		return nil, "", false, fmt.Errorf("failed to get user info: %w", err)
 	}
 
@@ -119,17 +144,45 @@ func (s *oauthService) HandleGoogleCallback(ctx context.Context, code string) (*
 		Picture:       userInfo.Picture,
 	}
 
+	log.Info("Google user info retrieved", map[string]interface{}{
+		"request_id":   requestID,
+		"action":       "oauth_google",
+		"provider_id":  googleUserInfo.ID,
+		"email":        googleUserInfo.Email,
+	})
+
 	// Find or create user
 	user, isNewUser, err := s.findOrCreateOAuthUser(ctx, "google", googleUserInfo.ID, googleUserInfo, token)
 	if err != nil {
+		log.Error("Failed to find or create OAuth user", map[string]interface{}{
+			"request_id": requestID,
+			"action":     "oauth_google",
+			"provider":   "google",
+			"error":      err.Error(),
+		})
 		return nil, "", false, err
 	}
 
 	// Generate JWT
 	jwtToken, err := s.userService.GenerateJWT(user)
 	if err != nil {
+		log.Error("JWT generation failed", map[string]interface{}{
+			"request_id": requestID,
+			"action":     "oauth_google",
+			"user_id":    user.ID.String(),
+			"error":      err.Error(),
+		})
 		return nil, "", false, fmt.Errorf("failed to generate JWT: %w", err)
 	}
+
+	duration := time.Since(startTime).Milliseconds()
+	log.Info("Google OAuth completed successfully", map[string]interface{}{
+		"request_id":  requestID,
+		"action":      "oauth_google",
+		"user_id":     user.ID.String(),
+		"is_new_user": isNewUser,
+		"duration_ms": duration,
+	})
 
 	return user, jwtToken, isNewUser, nil
 }
@@ -321,8 +374,8 @@ func (s *oauthService) findOrCreateOAuthUser(
 		}
 		isNewUser = true
 
-		// Sync new OAuth user to backend (async)
-		go s.syncService.SyncUserWithRetry(user, "created")
+		// Sync new OAuth user to backend (async with context)
+		go s.syncService.SyncUserWithRetry(ctx, user, "created")
 	}
 
 	// Create OAuth provider record

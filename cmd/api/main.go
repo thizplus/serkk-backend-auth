@@ -10,9 +10,18 @@ import (
 	"gofiber-template/interfaces/api/middleware"
 	"gofiber-template/interfaces/api/routes"
 	"gofiber-template/pkg/di"
+	"gofiber-template/pkg/logger"
 )
 
 func main() {
+	// Initialize structured logger
+	env := os.Getenv("APP_ENV")
+	if env == "" {
+		env = "development"
+	}
+	logger.InitLogger("gofiber-auth", env)
+	log.Println("✓ Structured logger initialized")
+
 	// Initialize DI container
 	container := di.NewContainer()
 
@@ -31,6 +40,8 @@ func main() {
 	})
 
 	// Setup middleware
+	app.Use(middleware.RequestIDMiddleware()) // Must be first to track all requests
+	app.Use(middleware.MetricsMiddleware())   // Collect Prometheus metrics
 	app.Use(middleware.LoggerMiddleware())
 	app.Use(middleware.CorsMiddleware())
 
@@ -47,6 +58,7 @@ func main() {
 	log.Printf("🌍 Environment: %s", container.GetConfig().App.Env)
 	log.Printf("📚 Health check: http://localhost:%s/health", port)
 	log.Printf("📖 API docs: http://localhost:%s/api/v1", port)
+	log.Printf("📊 Metrics: http://localhost:%s/metrics", port)
 	log.Printf("🔌 WebSocket: ws://localhost:%s/ws", port)
 
 	log.Fatal(app.Listen(":" + port))

@@ -10,15 +10,17 @@ type Config struct {
 	App      AppConfig
 	Database DatabaseConfig
 	Redis    RedisConfig
+	NATS     NATSConfig
 	JWT      JWTConfig
 	OAuth    OAuthConfig
 	Bunny    BunnyConfig
 }
 
 type AppConfig struct {
-	Name string
-	Port string
-	Env  string
+	Name        string
+	Port        string
+	Env         string
+	FrontendURL string
 }
 
 type DatabaseConfig struct {
@@ -35,6 +37,16 @@ type RedisConfig struct {
 	Port     string
 	Password string
 	DB       int
+}
+
+type NATSConfig struct {
+	URL           string
+	StreamName    string
+	Subject       string
+	DurableName   string
+	MaxRetries    int
+	RetryWait     int // seconds
+	EnableJetStream bool
 }
 
 type JWTConfig struct {
@@ -72,12 +84,16 @@ func LoadConfig() (*Config, error) {
 	}
 
 	redisDB, _ := strconv.Atoi(getEnv("REDIS_DB", "0"))
+	natsMaxRetries, _ := strconv.Atoi(getEnv("NATS_MAX_RETRIES", "3"))
+	natsRetryWait, _ := strconv.Atoi(getEnv("NATS_RETRY_WAIT", "1"))
+	natsEnableJS := getEnv("NATS_ENABLE_JETSTREAM", "true") == "true"
 
 	config := &Config{
 		App: AppConfig{
-			Name: getEnv("APP_NAME", "GoFiber Template"),
-			Port: getEnv("APP_PORT", "3000"),
-			Env:  getEnv("APP_ENV", "development"),
+			Name:        getEnv("APP_NAME", "GoFiber Template"),
+			Port:        getEnv("APP_PORT", "3000"),
+			Env:         getEnv("APP_ENV", "development"),
+			FrontendURL: getEnv("FRONTEND_URL", "http://localhost:3000"),
 		},
 		Database: DatabaseConfig{
 			Host:     getEnv("DB_HOST", "localhost"),
@@ -92,6 +108,15 @@ func LoadConfig() (*Config, error) {
 			Port:     getEnv("REDIS_PORT", "6379"),
 			Password: getEnv("REDIS_PASSWORD", ""),
 			DB:       redisDB,
+		},
+		NATS: NATSConfig{
+			URL:             getEnv("NATS_URL", "nats://localhost:4222"),
+			StreamName:      getEnv("NATS_STREAM_NAME", "USER_EVENTS"),
+			Subject:         getEnv("NATS_SUBJECT", "user.events"),
+			DurableName:     getEnv("NATS_DURABLE_NAME", "auth-service"),
+			MaxRetries:      natsMaxRetries,
+			RetryWait:       natsRetryWait,
+			EnableJetStream: natsEnableJS,
 		},
 		JWT: JWTConfig{
 			Secret: getEnv("JWT_SECRET", "your-secret-key"),

@@ -51,3 +51,17 @@ type LINEIDToken struct {
 	Email         string `json:"email"`
 	EmailVerified bool   `json:"email_verified"`
 }
+
+// Authorization Code Exchange DTOs
+
+type ExchangeCodeRequest struct {
+	Code  string `json:"code" validate:"required"`
+	State string `json:"state" validate:"required"`
+}
+
+type ExchangeCodeResponse struct {
+	Token        string       `json:"token"`
+	User         UserResponse `json:"user"`
+	IsNewUser    bool         `json:"isNewUser"`
+	NeedsProfile bool         `json:"needsProfile"`
+}

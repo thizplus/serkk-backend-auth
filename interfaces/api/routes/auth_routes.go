@@ -12,6 +12,9 @@ func SetupAuthRoutes(api fiber.Router, h *handlers.Handlers) {
 	auth.Post("/register", h.UserHandler.Register)
 	auth.Post("/login", h.UserHandler.Login)
 
+	// OAuth Code Exchange
+	auth.Post("/exchange", h.OAuthHandler.ExchangeCodeForToken)
+
 	// Google OAuth
 	auth.Get("/google", h.OAuthHandler.GetGoogleAuthURL)
 	auth.Get("/google/callback", h.OAuthHandler.HandleGoogleCallback)

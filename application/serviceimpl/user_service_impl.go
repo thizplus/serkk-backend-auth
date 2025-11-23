@@ -7,6 +7,8 @@ import (
 	"gofiber-template/domain/models"
 	"gofiber-template/domain/repositories"
 	"gofiber-template/domain/services"
+	"gofiber-template/pkg/contextutil"
+	"gofiber-template/pkg/logger"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -29,18 +31,44 @@ func NewUserService(userRepo repositories.UserRepository, jwtSecret string, sync
 }
 
 func (s *UserServiceImpl) Register(ctx context.Context, req *dto.CreateUserRequest) (*models.User, error) {
+	startTime := time.Now()
+	requestID := contextutil.GetRequestID(ctx)
+	log := logger.GetLogger()
+
+	log.Info("User registration started", map[string]interface{}{
+		"request_id": requestID,
+		"action":     "register",
+		"email":      req.Email,
+		"username":   req.Username,
+	})
+
 	existingUser, _ := s.userRepo.GetByEmail(ctx, req.Email)
 	if existingUser != nil {
+		log.Warn("Registration failed: email already exists", map[string]interface{}{
+			"request_id": requestID,
+			"action":     "register",
+			"email":      req.Email,
+		})
 		return nil, errors.New("email already exists")
 	}
 
 	existingUser, _ = s.userRepo.GetByUsername(ctx, req.Username)
 	if existingUser != nil {
+		log.Warn("Registration failed: username already exists", map[string]interface{}{
+			"request_id": requestID,
+			"action":     "register",
+			"username":   req.Username,
+		})
 		return nil, errors.New("username already exists")
 	}
 
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
+		log.Error("Password hashing failed", map[string]interface{}{
+			"request_id": requestID,
+			"action":     "register",
+			"error":      err.Error(),
+		})
 		return nil, err
 	}
 
@@ -59,38 +87,100 @@ func (s *UserServiceImpl) Register(ctx context.Context, req *dto.CreateUserReque
 
 	err = s.userRepo.Create(ctx, user)
 	if err != nil {
+		log.Error("User creation failed", map[string]interface{}{
+			"request_id": requestID,
+			"action":     "register",
+			"error":      err.Error(),
+		})
 		return nil, err
 	}
 
-	// Sync to backend (async)
-	go s.syncService.SyncUserWithRetry(user, "created")
+	duration := time.Since(startTime).Milliseconds()
+	log.Info("User registered successfully", map[string]interface{}{
+		"request_id":  requestID,
+		"action":      "register",
+		"user_id":     user.ID.String(),
+		"username":    user.Username,
+		"duration_ms": duration,
+	})
+
+	// Sync to backend (async with context)
+	go s.syncService.SyncUserWithRetry(ctx, user, "created")
 
 	return user, nil
 }
 
 func (s *UserServiceImpl) Login(ctx context.Context, req *dto.LoginRequest) (string, *models.User, error) {
+	startTime := time.Now()
+	requestID := contextutil.GetRequestID(ctx)
+	log := logger.GetLogger()
+
+	log.Info("User login attempt", map[string]interface{}{
+		"request_id": requestID,
+		"action":     "login",
+		"email":      req.Email,
+	})
+
 	user, err := s.userRepo.GetByEmail(ctx, req.Email)
 	if err != nil {
+		log.Warn("Login failed: user not found", map[string]interface{}{
+			"request_id": requestID,
+			"action":     "login",
+			"email":      req.Email,
+		})
 		return "", nil, errors.New("invalid email or password")
 	}
 
 	if !user.IsActive {
+		log.Warn("Login failed: account disabled", map[string]interface{}{
+			"request_id": requestID,
+			"action":     "login",
+			"user_id":    user.ID.String(),
+			"email":      req.Email,
+		})
 		return "", nil, errors.New("account is disabled")
 	}
 
 	if user.Password == nil {
+		log.Warn("Login failed: OAuth-only account", map[string]interface{}{
+			"request_id": requestID,
+			"action":     "login",
+			"user_id":    user.ID.String(),
+			"email":      req.Email,
+		})
 		return "", nil, errors.New("invalid email or password")
 	}
 
 	err = bcrypt.CompareHashAndPassword([]byte(*user.Password), []byte(req.Password))
 	if err != nil {
+		log.Warn("Login failed: invalid password", map[string]interface{}{
+			"request_id": requestID,
+			"action":     "login",
+			"user_id":    user.ID.String(),
+			"email":      req.Email,
+		})
 		return "", nil, errors.New("invalid email or password")
 	}
 
 	token, err := s.GenerateJWT(user)
 	if err != nil {
+		log.Error("JWT generation failed", map[string]interface{}{
+			"request_id": requestID,
+			"action":     "login",
+			"user_id":    user.ID.String(),
+			"error":      err.Error(),
+		})
 		return "", nil, err
 	}
+
+	duration := time.Since(startTime).Milliseconds()
+	log.Info("User logged in successfully", map[string]interface{}{
+		"request_id":  requestID,
+		"action":      "login",
+		"user_id":     user.ID.String(),
+		"username":    user.Username,
+		"duration_ms": duration,
+	})
 
 	return token, user, nil
 }
@@ -123,8 +213,8 @@ func (s *UserServiceImpl) UpdateProfile(ctx context.Context, userID uuid.UUID, r
 		return nil, err
 	}
 
-	// Sync to backend (async)
-	go s.syncService.SyncUserWithRetry(user, "updated")
+	// Sync to backend (async with context)
+	go s.syncService.SyncUserWithRetry(ctx, user, "updated")
 
 	return user, nil
 }
@@ -141,8 +231,8 @@ func (s *UserServiceImpl) DeleteUser(ctx context.Context, userID uuid.UUID) erro
 		return err
 	}
 
-	// Sync deletion to backend (async)
-	go s.syncService.SyncUserWithRetry(user, "deleted")
+	// Sync deletion to backend (async with context)
+	go s.syncService.SyncUserWithRetry(ctx, user, "deleted")
 
 	return nil
 }

@@ -6,6 +6,7 @@ import (
 	"gofiber-template/application/serviceimpl"
 	"gofiber-template/domain/repositories"
 	"gofiber-template/domain/services"
+	"gofiber-template/infrastructure/nats"
 	"gofiber-template/infrastructure/postgres"
 	"gofiber-template/infrastructure/redis"
 	"gofiber-template/interfaces/api/handlers"
@@ -21,6 +22,7 @@ type Container struct {
 	// Infrastructure
 	DB             *gorm.DB
 	RedisClient    *redis.RedisClient
+	EventPublisher services.EventPublisher
 	EventScheduler scheduler.EventScheduler
 
 	// Repositories
@@ -111,6 +113,16 @@ func (c *Container) initInfrastructure() error {
 		log.Println("✓ Redis connected")
 	}
 
+	// Initialize NATS Event Publisher
+	natsPublisher, err := nats.NewNATSPublisher(&c.Config.NATS)
+	if err != nil {
+		log.Printf("Warning: NATS connection failed: %v", err)
+		log.Println("⚠️  Will use HTTP sync as fallback")
+		c.EventPublisher = nil
+	} else {
+		c.EventPublisher = natsPublisher
+	}
+
 	return nil
 }
 
@@ -122,8 +134,8 @@ func (c *Container) initRepositories() error {
 }
 
 func (c *Container) initServices() error {
-	// Initialize SyncService first
-	c.SyncService = serviceimpl.NewSyncService()
+	// Initialize SyncService with EventPublisher
+	c.SyncService = serviceimpl.NewSyncServiceWithPublisher(c.EventPublisher)
 
 	// Initialize UserService and OAuthService with SyncService
 	c.UserService = serviceimpl.NewUserService(c.UserRepository, c.Config.JWT.Secret, c.SyncService)
@@ -152,6 +164,15 @@ func (c *Container) Cleanup() error {
 			log.Println("✓ Event scheduler stopped")
 		} else {
 			log.Println("✓ Event scheduler was already stopped")
+		}
+	}
+
+	// Close NATS Event Publisher
+	if c.EventPublisher != nil {
+		if err := c.EventPublisher.Close(); err != nil {
+			log.Printf("Warning: Failed to close NATS connection: %v", err)
+		} else {
+			log.Println("✓ NATS connection closed")
 		}
 	}
 
@@ -192,5 +213,6 @@ func (c *Container) GetHandlerServices() *handlers.Services {
 	return &handlers.Services{
 		UserService:  c.UserService,
 		OAuthService: c.OAuthService,
+		Config:       c.Config,
 	}
 }

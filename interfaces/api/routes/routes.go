@@ -9,6 +9,9 @@ func SetupRoutes(app *fiber.App, h *handlers.Handlers) {
 	// Setup health and root routes
 	SetupHealthRoutes(app)
 
+	// Prometheus metrics endpoint
+	app.Get("/metrics", h.MetricsHandler.GetMetrics)
+
 	// API version group
 	api := app.Group("/api/v1")
 
