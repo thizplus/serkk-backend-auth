@@ -11,10 +11,8 @@ type User struct {
 	Email       string     `gorm:"uniqueIndex;not null"`
 	Username    string     `gorm:"uniqueIndex;not null"`
 	Password    *string    `gorm:"default:null"` // Nullable for OAuth users
-	FirstName   string
-	LastName    string
-	DisplayName string     // For OAuth users (LINE, Facebook)
-	Avatar      string
+	DisplayName string     `gorm:"size:100"`     // User's display name (editable)
+	Avatar      string     `gorm:"size:500"`     // Profile picture URL
 	Role        string     `gorm:"default:'user'"`
 	IsActive    bool       `gorm:"default:true"`
 

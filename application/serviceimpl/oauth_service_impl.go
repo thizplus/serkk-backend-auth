@@ -268,35 +268,24 @@ func (s *oauthService) findOrCreateOAuthUser(
 	}
 
 	// Extract user data based on provider
-	var email, displayName, avatar, firstName, lastName string
+	var email, displayName, avatar string
 
 	switch provider {
 	case "google":
 		info := userInfo.(*dto.GoogleUserInfo)
 		email = info.Email
 		displayName = info.Name
-		firstName = info.GivenName
-		lastName = info.FamilyName
 		avatar = info.Picture
 	case "facebook":
 		info := userInfo.(*dto.FacebookUserInfo)
 		email = info.Email
 		displayName = info.Name
 		avatar = info.Picture.Data.URL
-		// Split name for first/last
-		parts := strings.SplitN(info.Name, " ", 2)
-		if len(parts) > 0 {
-			firstName = parts[0]
-		}
-		if len(parts) > 1 {
-			lastName = parts[1]
-		}
 	case "line":
 		info := userInfo.(*dto.LINEUserInfo)
 		email = fmt.Sprintf("line_%s@oauth.local", info.UserID)
 		displayName = info.DisplayName
 		avatar = info.PictureURL
-		firstName = info.DisplayName
 	}
 
 	// Generate username from email or display name
@@ -317,8 +306,6 @@ func (s *oauthService) findOrCreateOAuthUser(
 			Email:         email,
 			Username:      username,
 			Password:      nil, // OAuth users don't have password
-			FirstName:     firstName,
-			LastName:      lastName,
 			DisplayName:   displayName,
 			Avatar:        avatar,
 			IsOAuthUser:   true,

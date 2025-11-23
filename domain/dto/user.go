@@ -7,16 +7,13 @@ import (
 )
 
 type CreateUserRequest struct {
-	Email     string `json:"email" validate:"required,email,max=255"`
-	Username  string `json:"username" validate:"required,min=3,max=20,alphanum"`
-	Password  string `json:"password" validate:"required,min=8,max=72"`
-	FirstName string `json:"firstName" validate:"required,min=1,max=50"`
-	LastName  string `json:"lastName" validate:"required,min=1,max=50"`
+	Email       string `json:"email" validate:"required,email,max=255"`
+	Username    string `json:"username" validate:"required,min=3,max=20,alphanum"`
+	Password    string `json:"password" validate:"required,min=8,max=72"`
+	DisplayName string `json:"displayName" validate:"required,min=1,max=100"`
 }
 
 type UpdateUserRequest struct {
-	FirstName   string `json:"firstName" validate:"omitempty,min=1,max=50"`
-	LastName    string `json:"lastName" validate:"omitempty,min=1,max=50"`
 	DisplayName string `json:"displayName" validate:"omitempty,min=1,max=100"`
 	Avatar      string `json:"avatar" validate:"omitempty,url,max=500"`
 }
@@ -25,8 +22,6 @@ type UserResponse struct {
 	ID          uuid.UUID `json:"id"`
 	Email       string    `json:"email"`
 	Username    string    `json:"username"`
-	FirstName   string    `json:"firstName"`
-	LastName    string    `json:"lastName"`
 	DisplayName string    `json:"displayName"`
 	Avatar      string    `json:"avatar"`
 	Role        string    `json:"role"`

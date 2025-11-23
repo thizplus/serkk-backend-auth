@@ -2,7 +2,6 @@ package dto
 
 import (
 	"gofiber-template/domain/models"
-	"strings"
 )
 
 func UserToUserResponse(user *models.User) *UserResponse {
@@ -10,22 +9,16 @@ func UserToUserResponse(user *models.User) *UserResponse {
 		return nil
 	}
 
-	// Generate displayName from firstName + lastName
-	displayName := strings.TrimSpace(user.FirstName + " " + user.LastName)
+	// Use displayName from database, fallback to username if empty
+	displayName := user.DisplayName
 	if displayName == "" {
-		// Fallback to displayName from model, or username if empty
-		displayName = user.DisplayName
-		if displayName == "" {
-			displayName = user.Username
-		}
+		displayName = user.Username
 	}
 
 	return &UserResponse{
 		ID:          user.ID,
 		Email:       user.Email,
 		Username:    user.Username,
-		FirstName:   user.FirstName,
-		LastName:    user.LastName,
 		DisplayName: displayName,
 		Avatar:      user.Avatar,
 		Role:        user.Role,
@@ -38,18 +31,15 @@ func UserToUserResponse(user *models.User) *UserResponse {
 func CreateUserRequestToUser(req *CreateUserRequest) *models.User {
 	password := req.Password
 	return &models.User{
-		Email:     req.Email,
-		Username:  req.Username,
-		Password:  &password,
-		FirstName: req.FirstName,
-		LastName:  req.LastName,
+		Email:       req.Email,
+		Username:    req.Username,
+		Password:    &password,
+		DisplayName: req.DisplayName,
 	}
 }
 
 func UpdateUserRequestToUser(req *UpdateUserRequest) *models.User {
 	return &models.User{
-		FirstName:   req.FirstName,
-		LastName:    req.LastName,
 		DisplayName: req.DisplayName,
 		Avatar:      req.Avatar,
 	}

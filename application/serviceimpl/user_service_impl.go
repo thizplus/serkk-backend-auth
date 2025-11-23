@@ -46,16 +46,15 @@ func (s *UserServiceImpl) Register(ctx context.Context, req *dto.CreateUserReque
 
 	passwordStr := string(hashedPassword)
 	user := &models.User{
-		ID:        uuid.New(),
-		Email:     req.Email,
-		Username:  req.Username,
-		Password:  &passwordStr,
-		FirstName: req.FirstName,
-		LastName:  req.LastName,
-		Role:      "user",
-		IsActive:  true,
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+		ID:          uuid.New(),
+		Email:       req.Email,
+		Username:    req.Username,
+		Password:    &passwordStr,
+		DisplayName: req.DisplayName,
+		Role:        "user",
+		IsActive:    true,
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
 	}
 
 	err = s.userRepo.Create(ctx, user)
@@ -110,12 +109,6 @@ func (s *UserServiceImpl) UpdateProfile(ctx context.Context, userID uuid.UUID, r
 		return nil, errors.New("user not found")
 	}
 
-	if req.FirstName != "" {
-		user.FirstName = req.FirstName
-	}
-	if req.LastName != "" {
-		user.LastName = req.LastName
-	}
 	if req.DisplayName != "" {
 		user.DisplayName = req.DisplayName
 	}
