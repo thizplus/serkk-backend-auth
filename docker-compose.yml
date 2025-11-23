@@ -1,0 +1,92 @@
+version: '3.8'
+
+services:
+  auth-service:
+    build: .
+    container_name: serkk-auth-service
+    ports:
+      - "8088:8088"
+    depends_on:
+      - postgres
+      - redis
+    environment:
+      # Application
+      - APP_NAME=GoFiber Auth Service
+      - APP_PORT=8088
+      - APP_ENV=production
+
+      # Database
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=${DB_PASSWORD:-your-db-password}
+      - DB_NAME=gofiber_auth
+      - DB_SSL_MODE=disable
+
+      # Redis
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=
+      - REDIS_DB=0
+
+      # JWT
+      - JWT_SECRET=${JWT_SECRET:-your-super-secret-jwt-key}
+
+      # OAuth - Google
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-your-google-client-id}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-your-google-client-secret}
+      - GOOGLE_REDIRECT_URL=http://localhost:8088/api/v1/auth/google/callback
+
+      # OAuth - Facebook (placeholder)
+      - FACEBOOK_CLIENT_ID=your-facebook-client-id
+      - FACEBOOK_CLIENT_SECRET=your-facebook-client-secret
+      - FACEBOOK_REDIRECT_URL=http://localhost:8088/api/v1/auth/facebook/callback
+
+      # OAuth - LINE (placeholder)
+      - LINE_CLIENT_ID=your-line-client-id
+      - LINE_CLIENT_SECRET=your-line-client-secret
+      - LINE_REDIRECT_URL=http://localhost:8088/api/v1/auth/line/callback
+
+      # Backend Sync
+      - BACKEND_SYNC_URL=http://backend-service:8080/internal/users/sync
+
+    volumes:
+      - .:/app
+    restart: unless-stopped
+    networks:
+      - serkk-network
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: serkk-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-your-db-password}
+      POSTGRES_DB: gofiber_auth
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql
+    restart: unless-stopped
+    networks:
+      - serkk-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: serkk-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    networks:
+      - serkk-network
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  serkk-network:
+    driver: bridge
