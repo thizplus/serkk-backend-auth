@@ -1,5 +1,8 @@
 version: '3.8'
 
+# Local Development Environment
+# For production deployment, use DigitalOcean App Platform with .env.prod.example
+
 services:
   auth-service:
     build: .
@@ -11,9 +14,9 @@ services:
       - redis
     environment:
       # Application
-      - APP_NAME=GoFiber Auth Service
+      - APP_NAME=SUEKK Auth Service (Dev)
       - APP_PORT=8088
-      - APP_ENV=production
+      - APP_ENV=development
 
       # Database
       - DB_HOST=postgres

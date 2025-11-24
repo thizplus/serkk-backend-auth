@@ -13,12 +13,12 @@
 
 # Go workspace file
 go.work
+go.work.sum
 
 # Dependency directories (remove the comment below to include it)
 vendor/
 
-# Go modules
-go.sum
+# Note: go.sum should be committed to git for reproducible builds
 
 # Build output
 build/
@@ -30,6 +30,7 @@ build/
 .env.development
 .env.test
 .env.production
+.env.prod
 
 # Logs
 *.log
