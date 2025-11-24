@@ -59,7 +59,6 @@ func main() {
 	log.Printf("📚 Health check: http://localhost:%s/health", port)
 	log.Printf("📖 API docs: http://localhost:%s/api/v1", port)
 	log.Printf("📊 Metrics: http://localhost:%s/metrics", port)
-	log.Printf("🔌 WebSocket: ws://localhost:%s/ws", port)
 
 	log.Fatal(app.Listen(":" + port))
 }

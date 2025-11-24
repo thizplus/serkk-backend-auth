@@ -1,839 +1,808 @@
-# 🏗️ GoFiber Auth Service - Architecture Documentation
+# Auth Service - Architecture & Project Structure
 
-> **สรุปโครงสร้างและการทำงานของ Auth Service ทั้งหมด**
+**Last Updated:** 2025-11-24
+**Version:** 2.0
+**Architecture:** Clean Architecture + Event-Driven Microservices
 
 ---
 
 ## 📋 Table of Contents
 
-1. [Overview](#overview)
-2. [Architecture Pattern](#architecture-pattern)
-3. [Directory Structure](#directory-structure)
-4. [Data Flow](#data-flow)
-5. [Layer Details](#layer-details)
-6. [Dependencies](#dependencies)
-7. [Configuration](#configuration)
-8. [Key Features](#key-features)
+1. [Current Project Structure](#current-project-structure)
+2. [Clean Architecture Layers](#clean-architecture-layers)
+3. [Current State: Auth Microservice](#current-state-auth-microservice)
+4. [Integration Points](#integration-points)
+5. [Future Microservices Plan](#future-microservices-plan)
+6. [Data Flow](#data-flow)
+7. [Technology Stack](#technology-stack)
 
 ---
 
-## Overview
-
-**Auth Service** คือ Authentication & Authorization microservice ที่สร้างด้วย:
-- **Framework:** GoFiber v2
-- **Database:** PostgreSQL (GORM)
-- **Cache:** Redis
-- **Authentication:** JWT + OAuth 2.0
-- **Architecture:** Clean Architecture
-
-**Port:** `8088` (default)
-
-**Main Features:**
-- ✅ User Registration & Login (Email/Password)
-- ✅ OAuth 2.0 (Google, Facebook, LINE)
-- ✅ JWT Token Generation & Validation
-- ✅ User Sync to Backend Service
-- ✅ Graceful Shutdown
-- ✅ Health Check Endpoints
-
----
-
-## Architecture Pattern
-
-ใช้ **Clean Architecture** แบ่งเป็น 4 layers:
-
-```
-┌─────────────────────────────────────────────────────────┐
-│                   cmd/api (main.go)                     │
-│                    Entry Point                          │
-└────────────────────┬────────────────────────────────────┘
-                     │
-┌────────────────────▼────────────────────────────────────┐
-│              interfaces/ (Adapters)                     │
-│  ┌─────────────────────────────────────────────────┐   │
-│  │  API Layer (Handlers, Routes, Middleware)      │   │
-│  │  - HTTP Handlers                                │   │
-│  │  - Routes Setup                                 │   │
-│  │  - CORS, Auth, Logger Middleware                │   │
-│  └─────────────────────────────────────────────────┘   │
-└────────────────────┬────────────────────────────────────┘
-                     │
-┌────────────────────▼────────────────────────────────────┐
-│           application/ (Use Cases)                      │
-│  ┌─────────────────────────────────────────────────┐   │
-│  │  Service Implementations                        │   │
-│  │  - UserServiceImpl                              │   │
-│  │  - OAuthServiceImpl                             │   │
-│  │  - SyncService                                  │   │
-│  └─────────────────────────────────────────────────┘   │
-└────────────────────┬────────────────────────────────────┘
-                     │
-┌────────────────────▼────────────────────────────────────┐
-│              domain/ (Business Logic)                   │
-│  ┌──────────────────┬──────────────────┬───────────┐   │
-│  │    Models        │   Repositories   │  Services │   │
-│  │  (Entities)      │   (Interfaces)   │  (Ports)  │   │
-│  ├──────────────────┼──────────────────┼───────────┤   │
-│  │  - User          │  - UserRepo      │  - User   │   │
-│  │  - OAuthProvider │  - OAuthRepo     │  - OAuth  │   │
-│  └──────────────────┴──────────────────┴───────────┘   │
-│  ┌─────────────────────────────────────────────────┐   │
-│  │  DTOs (Data Transfer Objects)                   │   │
-│  │  - Request/Response structures                  │   │
-│  └─────────────────────────────────────────────────┘   │
-└────────────────────┬────────────────────────────────────┘
-                     │
-┌────────────────────▼────────────────────────────────────┐
-│          infrastructure/ (External)                     │
-│  ┌──────────────────┬──────────────────┬───────────┐   │
-│  │   PostgreSQL     │      Redis       │  Storage  │   │
-│  │ (Repository      │   (Caching)      │  (Bunny   │   │
-│  │  Implementations)│                  │   CDN)    │   │
-│  └──────────────────┴──────────────────┴───────────┘   │
-└─────────────────────────────────────────────────────────┘
-```
-
----
-
-## Directory Structure
+## 🗂️ Current Project Structure
 
 ```
 gofiber-auth/
 │
-├── cmd/                          # Entry points
+├── cmd/
 │   ├── api/
-│   │   └── main.go              # Main application entry
-│   └── migrate/                 # Migration utilities
-│       ├── check_db.go
-│       ├── import_users.go
-│       └── migrate_to_displayname.go
+│   │   └── main.go                    # 🚀 Application entry point
+│   └── test_subscriber/
+│       └── main.go                    # 🧪 NATS event subscriber (for testing)
 │
-├── domain/                       # Business Logic Layer
-│   ├── dto/                     # Data Transfer Objects
-│   │   ├── auth.go             # Auth DTOs (Login, Register)
-│   │   ├── oauth.go            # OAuth DTOs
-│   │   ├── user.go             # User DTOs
-│   │   ├── common.go           # Common response DTOs
-│   │   └── mappers.go          # Model ↔ DTO mappers
+├── domain/                            # 🏛️ BUSINESS LOGIC LAYER (CORE)
+│   ├── models/                        # Entities
+│   │   ├── user.go                    # User entity
+│   │   └── oauth_provider.go         # OAuth provider entity
 │   │
-│   ├── models/                  # Domain Entities
-│   │   ├── user.go             # User entity
-│   │   └── oauth_provider.go  # OAuth provider entity
+│   ├── dto/                           # Data Transfer Objects
+│   │   ├── user_dto.go                # Request/Response DTOs
+│   │   └── oauth_dto.go               # OAuth DTOs
 │   │
-│   ├── repositories/            # Repository Interfaces
-│   │   ├── user_repository.go
-│   │   └── oauth_repository.go
+│   ├── services/                      # Service interfaces (contracts)
+│   │   ├── user_service.go            # User business logic interface
+│   │   ├── oauth_service.go           # OAuth interface
+│   │   └── event_publisher.go         # Event publishing interface
 │   │
-│   └── services/                # Service Interfaces (Ports)
-│       ├── user_service.go
-│       └── oauth_service.go
+│   └── repositories/                  # Repository interfaces
+│       ├── user_repository.go         # User data access interface
+│       └── oauth_repository.go        # OAuth data access interface
 │
-├── application/                  # Use Cases Layer
-│   └── serviceimpl/             # Service Implementations
-│       ├── user_service_impl.go
-│       ├── oauth_service_impl.go
-│       └── sync_service.go      # Backend sync service
+├── application/                       # 📦 APPLICATION LAYER (USE CASES)
+│   └── serviceimpl/                   # Service implementations
+│       ├── user_service_impl.go       # User business logic
+│       ├── oauth_service_impl.go      # OAuth logic (Google, Facebook, LINE)
+│       └── sync_service.go            # User sync via events/HTTP
 │
-├── infrastructure/               # External Dependencies
-│   ├── postgres/                # PostgreSQL implementations
-│   │   ├── database.go         # DB connection
-│   │   ├── user_repository_impl.go
-│   │   └── oauth_repository_impl.go
+├── infrastructure/                    # 🔧 INFRASTRUCTURE LAYER (EXTERNAL)
+│   ├── postgres/                      # Database implementations
+│   │   ├── user_repository_impl.go    # User CRUD
+│   │   └── oauth_repository_impl.go   # OAuth CRUD
 │   │
-│   ├── redis/                   # Redis client
-│   │   └── redis.go
-│   │
-│   ├── storage/                 # File storage (Bunny CDN)
-│   │   └── bunny.go
-│   │
-│   └── websocket/               # WebSocket (future)
-│       └── websocket.go
+│   └── nats/                          # Event Bus implementation
+│       └── nats_publisher.go          # NATS JetStream publisher
 │
-├── interfaces/                   # Adapters Layer
+├── interfaces/                        # 🌐 INTERFACE LAYER (HTTP/API)
 │   └── api/
-│       ├── handlers/            # HTTP Handlers
-│       │   ├── handlers.go     # Handler constructor
-│       │   ├── user_handler.go
-│       │   └── oauth_handler.go
+│       ├── handlers/                  # HTTP request handlers
+│       │   ├── auth_handler.go        # Register, Login
+│       │   ├── oauth_handler.go       # OAuth callbacks
+│       │   ├── user_handler.go        # User CRUD
+│       │   ├── health_handler.go      # Health check
+│       │   └── metrics_handler.go     # Prometheus metrics
 │       │
-│       ├── middleware/          # HTTP Middleware
-│       │   ├── auth_middleware.go
-│       │   ├── cors_middleware.go
-│       │   ├── error_middleware.go
-│       │   └── logger_middleware.go
+│       ├── middleware/                # HTTP middleware
+│       │   ├── auth_middleware.go     # JWT validation
+│       │   ├── cors_middleware.go     # CORS policy
+│       │   ├── logger_middleware.go   # Request logging
+│       │   ├── metrics_middleware.go  # Metrics collection
+│       │   └── request_id_middleware.go # Request ID tracking
 │       │
-│       └── routes/              # Route definitions
-│           ├── routes.go       # Main router
-│           ├── auth_routes.go
-│           ├── user_routes.go
-│           └── health_routes.go
+│       └── routes/                    # Route definitions
+│           └── routes.go              # API routes setup
 │
-├── pkg/                          # Shared Packages
-│   ├── config/                  # Configuration
-│   │   └── config.go
+├── pkg/                               # 📚 SHARED UTILITIES
+│   ├── config/                        # Configuration
+│   │   ├── config.go                  # Config loader
+│   │   └── database.go                # DB connection
 │   │
-│   ├── di/                      # Dependency Injection
-│   │   └── container.go        # DI Container
+│   ├── di/                            # Dependency Injection
+│   │   └── container.go               # DI container
 │   │
-│   ├── auth_code_store/         # Authorization Code Storage
-│   │   └── store.go
+│   ├── logger/                        # Structured logging
+│   │   └── logger.go                  # JSON logger
 │   │
-│   ├── scheduler/               # Event Scheduler
-│   │   └── scheduler.go
+│   ├── metrics/                       # Prometheus metrics
+│   │   └── metrics.go                 # Metrics definitions
 │   │
-│   └── utils/                   # Utilities
-│       ├── jwt.go              # JWT utilities
-│       ├── response.go         # Response helpers
-│       └── validator.go        # Validation helpers
+│   ├── contextutil/                   # Context helpers
+│   │   └── context.go                 # Request ID helpers
+│   │
+│   └── auth_code_store/               # OAuth state store
+│       └── store.go                   # In-memory store
 │
-├── docs/                         # Documentation
-├── microservice_plan/           # Microservice planning docs
-├── postman/                     # Postman collections
-├── scripts/                     # Utility scripts
+├── .env.example                       # Environment variables template
+├── go.mod                             # Go modules
+├── go.sum                             # Go dependencies
 │
-├── .env                         # Environment variables
-├── .env.example                # Environment template
-├── go.mod                       # Go modules
-├── go.sum
-├── Dockerfile                   # Docker configuration
-├── docker-compose.yml          # Docker Compose
-└── Makefile                     # Build commands
+├── README.md                          # Project overview
+└── SERVICE_INTEGRATION.md             # Complete integration guide
 ```
 
 ---
 
-## Data Flow
+## 🏗️ Clean Architecture Layers
 
-### 1. HTTP Request Flow
+Auth Service ใช้ **Clean Architecture** (Uncle Bob) แบ่งเป็น 4 ชั้น:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  INTERFACES LAYER (HTTP/API)                                │
+│  ┌──────────────────────────────────────────────────────┐   │
+│  │  Handlers, Middleware, Routes                        │   │
+│  │  - รับ HTTP requests                                 │   │
+│  │  - แปลง request → DTO                                │   │
+│  │  - เรียก Application Layer                           │   │
+│  │  - ส่ง HTTP response                                 │   │
+│  └──────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────┘
+                            ↓ Dependency
+┌─────────────────────────────────────────────────────────────┐
+│  APPLICATION LAYER (USE CASES)                              │
+│  ┌──────────────────────────────────────────────────────┐   │
+│  │  Service Implementations                             │   │
+│  │  - User registration logic                           │   │
+│  │  - OAuth flow logic                                  │   │
+│  │  - JWT generation                                    │   │
+│  │  - Event publishing                                  │   │
+│  └──────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────┘
+                            ↓ Dependency
+┌─────────────────────────────────────────────────────────────┐
+│  DOMAIN LAYER (BUSINESS LOGIC - CORE)                       │
+│  ┌──────────────────────────────────────────────────────┐   │
+│  │  Entities, DTOs, Interfaces                          │   │
+│  │  - User, OAuthProvider models                        │   │
+│  │  - Service interfaces (contracts)                    │   │
+│  │  - Repository interfaces                             │   │
+│  │  - ไม่มี dependencies ภายนอก (PURE)                  │   │
+│  └──────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────┘
+                            ↑ Implements
+┌─────────────────────────────────────────────────────────────┐
+│  INFRASTRUCTURE LAYER (EXTERNAL)                            │
+│  ┌──────────────────────────────────────────────────────┐   │
+│  │  Database, NATS, External APIs                       │   │
+│  │  - PostgreSQL repository implementations             │   │
+│  │  - NATS publisher implementation                     │   │
+│  │  - External service integrations                     │   │
+│  └──────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Dependency Rule
+
+**สิ่งสำคัญ:** Dependencies ชี้เข้าหา **Domain Layer** เท่านั้น
+
+```
+Infrastructure → Domain ← Application ← Interfaces
+                  ↑
+            (Core/Center)
+```
+
+**ข้อดี:**
+- ✅ Domain ไม่ depend on ใคร (testable)
+- ✅ เปลี่ยน database ได้โดยไม่กระทบ business logic
+- ✅ เปลี่ยน framework ได้โดยไม่กระทบ core
+- ✅ Easy to test (mock interfaces)
+
+---
+
+## 🎯 Current State: Auth Microservice
+
+### สถานะปัจจุบัน
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                                                             │
+│               🎯 AUTH SERVICE (Microservice)                │
+│                                                             │
+│  Responsibilities:                                          │
+│  ✅ User Registration (Email/Password)                      │
+│  ✅ User Authentication (Login)                             │
+│  ✅ OAuth Integration (Google, Facebook, LINE)              │
+│  ✅ JWT Token Generation & Validation                       │
+│  ✅ User Identity Management (id, email, username)          │
+│  ✅ Event Publishing (user.events.*)                        │
+│                                                             │
+│  Technology:                                                │
+│  - GoFiber (HTTP Framework)                                 │
+│  - PostgreSQL (Database)                                    │
+│  - NATS JetStream (Event Bus)                               │
+│  - JWT (Authentication)                                     │
+│  - Prometheus (Metrics)                                     │
+│                                                             │
+│  Ports:                                                     │
+│  - HTTP: 8088                                               │
+│  - Metrics: 8088/metrics                                    │
+│  - NATS: 4222                                               │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### ไม่รับผิดชอบ (Out of Scope)
+
+```
+❌ User Profiles (displayName, avatar, bio)
+   → Social/Profile Service
+
+❌ User Permissions/Roles Management
+   → Internal only, ไม่ expose ใน events
+
+❌ Social Features (posts, comments, follows)
+   → Social Service
+
+❌ Business Logic อื่นๆ
+   → Respective services
+```
+
+---
+
+## 🔌 Integration Points
+
+### 1. HTTP API (Synchronous)
+
+```
+┌─────────────┐                    ┌─────────────┐
+│             │   HTTP Request     │             │
+│   Client    ├───────────────────→│    Auth     │
+│ (Frontend)  │                    │   Service   │
+│             │←───────────────────┤             │
+│             │   HTTP Response    │             │
+└─────────────┘   (JWT Token)      └─────────────┘
+```
+
+**Endpoints:**
+- `POST /api/v1/auth/register` - User registration
+- `POST /api/v1/auth/login` - User login
+- `GET /api/v1/auth/google` - OAuth URL
+- `GET /api/v1/users/me` - Get current user
+
+---
+
+### 2. Event-Driven (Asynchronous)
+
+```
+┌─────────────┐                    ┌─────────────┐
+│             │   User Event       │             │
+│    Auth     ├───────────────────→│    NATS     │
+│   Service   │   (Publish)        │  JetStream  │
+│             │                    │             │
+└─────────────┘                    └──────┬──────┘
+                                          │
+                                          │ Subscribe
+                                          ↓
+                               ┌──────────────────────┐
+                               │                      │
+                               │   Social Service     │
+                               │   (Subscriber)       │
+                               │                      │
+                               │   - users_identity   │
+                               │   - users_profile    │
+                               │                      │
+                               └──────────────────────┘
+```
+
+**Event Topics:**
+- `user.events.created` - New user registered
+- `user.events.updated` - User updated email/username
+- `user.events.deleted` - User deleted
+
+**Event Payload (V2 - Minimal Identity):**
+```json
+{
+  "id": "uuid",
+  "email": "user@example.com",
+  "username": "john_doe",
+  "action": "created"
+}
+```
+
+---
+
+### 3. JWT Validation (Inter-Service)
+
+```
+┌─────────────┐                    ┌─────────────┐
+│             │   JWT Token        │             │
+│   Social    ├───────────────────→│    Auth     │
+│   Service   │   Validate         │   Service   │
+│             │                    │             │
+│             │←───────────────────┤             │
+│             │   User Info        │             │
+└─────────────┘                    └─────────────┘
+
+หรือ
+
+┌─────────────┐
+│             │   JWT Secret
+│   Social    │   (Shared)
+│   Service   │   Validate Locally
+│             │   (Faster)
+│             │
+└─────────────┘
+```
+
+---
+
+## 🚀 Future Microservices Plan
+
+### ขณะนี้: Monolithic → Microservices (Stage 1)
+
+```
+BEFORE:
+┌─────────────────────────────────────┐
+│                                     │
+│      Monolithic Application         │
+│                                     │
+│  - Auth                             │
+│  - User Profiles                    │
+│  - Social Features                  │
+│  - Posts                            │
+│  - Comments                         │
+│  - Notifications                    │
+│                                     │
+└─────────────────────────────────────┘
+
+
+NOW (Stage 1):
+┌───────────────┐         ┌────────────────────────┐
+│               │         │                        │
+│  Auth Service │         │  Social Monolith       │
+│  (Extracted)  │         │                        │
+│               │         │  - User Profiles       │
+│  - Register   │         │  - Social Features     │
+│  - Login      │  Events │  - Posts               │
+│  - OAuth      │────────→│  - Comments            │
+│  - JWT        │  NATS   │  - Notifications       │
+│               │         │                        │
+└───────────────┘         └────────────────────────┘
+     Port 8088                  Port 8080
+```
+
+---
+
+### แผนอนาคต: Stage 2-4
+
+#### Stage 2: Extract Profile Service
+
+```
+┌───────────────┐         ┌────────────────────┐
+│  Auth Service │         │  Profile Service   │
+│               │  Events │                    │
+│  - Register   │────────→│  - Display Name    │
+│  - Login      │  NATS   │  - Avatar          │
+│  - OAuth      │         │  - Bio             │
+│  - JWT        │         │  - Settings        │
+└───────────────┘         └────────────────────┘
+                                   │
+                                   │ HTTP/Events
+                                   ↓
+                          ┌─────────────────────┐
+                          │  Social Monolith    │
+                          │                     │
+                          │  - Posts            │
+                          │  - Comments         │
+                          │  - Follows          │
+                          │  - Notifications    │
+                          └─────────────────────┘
+```
+
+---
+
+#### Stage 3: Extract Social Features
+
+```
+┌───────────────┐    ┌────────────────┐    ┌─────────────────┐
+│  Auth Service │    │Profile Service │    │  Social Service │
+│               │    │                │    │                 │
+│  - Register   │    │  - User Profile│    │  - Posts        │
+│  - Login      │    │  - Avatar      │    │  - Comments     │
+│  - OAuth      │    │  - Bio         │    │  - Likes        │
+│  - JWT        │    │  - Settings    │    │  - Shares       │
+└───────────────┘    └────────────────┘    └─────────────────┘
+        │                    │                      │
+        └────────────────────┴──────────────────────┘
+                            │
+                      NATS JetStream
+                            │
+        ┌───────────────────┴───────────────────┐
+        │                                       │
+        ↓                                       ↓
+┌───────────────────┐                  ┌──────────────────┐
+│  Follow Service   │                  │Notification Svc  │
+│                   │                  │                  │
+│  - Follow/Unfollow│                  │  - Push Notifs   │
+│  - Followers      │                  │  - Email         │
+│  - Following      │                  │  - WebSocket     │
+└───────────────────┘                  └──────────────────┘
+```
+
+---
+
+#### Stage 4: Full Microservices Architecture
+
+```
+                        API Gateway / BFF
+                               │
+        ┌──────────────────────┼──────────────────────┐
+        │                      │                      │
+        ↓                      ↓                      ↓
+┌───────────────┐    ┌────────────────┐    ┌─────────────────┐
+│  Auth Service │    │Profile Service │    │  Social Service │
+└───────┬───────┘    └────────┬───────┘    └────────┬────────┘
+        │                     │                      │
+        │                     │                      │
+        └─────────────────────┴──────────────────────┘
+                              │
+                        NATS JetStream
+                       (Event Bus)
+                              │
+        ┌─────────────────────┼─────────────────────┐
+        │                     │                     │
+        ↓                     ↓                     ↓
+┌───────────────┐   ┌──────────────────┐  ┌────────────────┐
+│Follow Service │   │Notification Svc  │  │  Media Service │
+│               │   │                  │  │                │
+│- Follow/Unfl  │   │- Push Notifs     │  │- Upload        │
+│- Followers    │   │- Email           │  │- CDN           │
+│- Following    │   │- WebSocket       │  │- Resize        │
+└───────────────┘   └──────────────────┘  └────────────────┘
+        │                     │                     │
+        └─────────────────────┴─────────────────────┘
+                              │
+                     Shared Infrastructure
+                              │
+        ┌─────────────────────┼─────────────────────┐
+        │                     │                     │
+        ↓                     ↓                     ↓
+    PostgreSQL            Redis Cache          Prometheus
+    (Per Service)        (Shared/Per Svc)      (Metrics)
+```
+
+---
+
+### Service Candidates (แยกได้ในอนาคต)
+
+| Service | Priority | Complexity | Dependencies | Benefit |
+|---------|----------|------------|--------------|---------|
+| **Auth Service** | ✅ Done | Medium | None | High - Security isolation |
+| **Profile Service** | High | Low | Auth | Medium - Independent scaling |
+| **Social Service** | High | Medium | Auth, Profile | High - Core feature |
+| **Follow Service** | Medium | Low | Auth | Medium - Can scale independently |
+| **Notification Service** | Medium | High | All | High - Push/Email/WebSocket |
+| **Media Service** | Low | High | Auth | Medium - Upload/CDN/Resize |
+| **Search Service** | Low | High | All | Medium - Elasticsearch |
+| **Analytics Service** | Low | Medium | All | Low - Business intelligence |
+
+---
+
+## 🔄 Data Flow
+
+### User Registration Flow
 
 ```
 ┌─────────┐
-│ Client  │
+│  Client │
 └────┬────┘
-     │ HTTP Request
+     │ 1. POST /api/v1/auth/register
+     │    { email, username, password, displayName }
+     ↓
+┌──────────────────┐
+│  Auth Service    │
+│  (Port 8088)     │
+└────┬─────────────┘
+     │ 2. Create user in DB
+     │    INSERT INTO users (id, email, username, ...)
      │
-┌────▼─────────────────────────────────────────────────┐
-│  Fiber App (cmd/api/main.go)                         │
-│  ┌────────────────────────────────────────────────┐  │
-│  │  Middleware Chain                              │  │
-│  │  1. LoggerMiddleware   (log request)           │  │
-│  │  2. CorsMiddleware     (CORS headers)          │  │
-│  │  3. AuthMiddleware     (JWT validation)        │  │
-│  │  4. ErrorHandler       (catch errors)          │  │
-│  └───────────────────┬────────────────────────────┘  │
-└──────────────────────┼───────────────────────────────┘
-                       │
-┌──────────────────────▼────────────────────────────────┐
-│  Routes (interfaces/api/routes/)                      │
-│  - Match URL to Handler                               │
-│  - /api/v1/auth/login → UserHandler.Login()          │
-└──────────────────────┬────────────────────────────────┘
-                       │
-┌──────────────────────▼────────────────────────────────┐
-│  Handlers (interfaces/api/handlers/)                  │
-│  - Parse request (validate DTO)                       │
-│  - Call Service                                       │
-│  - Return response                                    │
-└──────────────────────┬────────────────────────────────┘
-                       │
-┌──────────────────────▼────────────────────────────────┐
-│  Services (application/serviceimpl/)                  │
-│  - Business logic                                     │
-│  - Call Repository                                    │
-│  - Generate JWT                                       │
-│  - Sync to Backend (async)                            │
-└──────────────────────┬────────────────────────────────┘
-                       │
-┌──────────────────────▼────────────────────────────────┐
-│  Repositories (infrastructure/postgres/)              │
-│  - Execute SQL queries (via GORM)                     │
-│  - Return domain models                               │
-└──────────────────────┬────────────────────────────────┘
-                       │
-┌──────────────────────▼────────────────────────────────┐
-│  Database (PostgreSQL)                                │
-│  - Store/Retrieve data                                │
-└───────────────────────────────────────────────────────┘
-```
-
-### 2. User Registration Flow
-
-```
-Client
-  │
-  │ POST /api/v1/auth/register
-  │ { email, username, password }
-  │
-  ▼
-UserHandler.Register()
-  │
-  │ 1. Validate request
-  │ 2. Check email/username unique
-  │
-  ▼
-UserService.Register()
-  │
-  │ 1. Hash password (bcrypt)
-  │ 2. Create user record
-  │ 3. Generate JWT token
-  │
-  ▼
-UserRepository.Create()
-  │
-  │ INSERT INTO users
-  │
-  ▼
-Database (PostgreSQL)
-  │
-  ▼ (async goroutine)
-SyncService.SyncUserWithRetry()
-  │
-  │ POST http://localhost:8080/internal/users/sync
-  │ Retry: 3 times with exponential backoff
-  │
-  ▼
-Backend Service (User Cache)
-```
-
-### 3. OAuth Login Flow (Google)
-
-```
-Client
-  │
-  │ 1. GET /api/v1/auth/google
-  │
-  ▼
-OAuthHandler.GetGoogleAuthURL()
-  │
-  │ - Generate state (CSRF token)
-  │ - Set cookie: oauth_state
-  │ - Return Google OAuth URL
-  │
-  ▼
-Client redirects to Google
-  │
-  │ User authenticates with Google
-  │
-  ▼
-Google redirects back
-  │
-  │ 2. GET /api/v1/auth/google/callback?code=xxx&state=xxx
-  │
-  ▼
-OAuthHandler.HandleGoogleCallback()
-  │
-  │ 1. Validate state (optional if cookie exists)
-  │ 2. Exchange code with Google
-  │ 3. Get user info from Google
-  │
-  ▼
-OAuthService.GoogleCallback()
-  │
-  │ 1. Find or create user
-  │ 2. Link OAuth provider
-  │ 3. Generate authorization code
-  │ 4. Store code in memory (5 min expiry)
-  │
-  ▼
-Redirect to Frontend
-  │
-  │ http://localhost:3000/auth/callback?code=OUR_CODE
-  │
-  ▼
-Client
-  │
-  │ 3. POST /api/v1/auth/exchange
-  │    { code: OUR_CODE }
-  │
-  ▼
-OAuthHandler.ExchangeCodeForToken()
-  │
-  │ 1. Validate code
-  │ 2. Return stored JWT token
-  │ 3. Delete code (one-time use)
-  │
-  ▼
-Client receives JWT token
+     │ 3. Publish event to NATS
+     │    Topic: user.events.created
+     │    Payload: { id, email, username }
+     ↓
+┌──────────────────┐
+│  NATS JetStream  │
+│  (Port 4222)     │
+└────┬─────────────┘
+     │ 4. Deliver event to subscribers
+     ↓
+┌───────────────────────┐
+│  Social Service       │
+│  (Subscriber)         │
+└───┬───────────────────┘
+    │ 5a. INSERT INTO users_identity
+    │     (id, email, username)
+    │
+    │ 5b. INSERT INTO users_profile
+    │     (id, display_name) -- from client API call
+    │
+    ↓
+  ✅ Complete!
 ```
 
 ---
 
-## Layer Details
+### JWT Validation Flow
 
-### 🔵 1. Domain Layer (`domain/`)
-
-**ไม่มี dependencies กับ layer อื่น** - เป็นศูนย์กลางของ business logic
-
-#### Models (Entities)
-```go
-// domain/models/user.go
-type User struct {
-    ID            uuid.UUID
-    Email         string
-    Username      string
-    Password      *string     // Nullable for OAuth users
-    DisplayName   string
-    Avatar        string
-    Role          string      // "user" or "admin"
-    IsActive      bool
-    IsOAuthUser   bool
-    OAuthProvider string      // "google", "facebook", "line"
-    OAuthID       string
-    EmailVerified bool
-    LastLoginAt   *time.Time
-    CreatedAt     time.Time
-    UpdatedAt     time.Time
-}
 ```
+┌─────────┐
+│  Client │
+└────┬────┘
+     │ 1. Request with JWT
+     │    Authorization: Bearer <token>
+     ↓
+┌──────────────────┐
+│  Social Service  │
+└────┬─────────────┘
+     │
+     │ Option 1: Call Auth Service
+     │ GET http://localhost:8088/api/v1/users/me
+     ↓
+┌──────────────────┐
+│  Auth Service    │
+│                  │
+│  Validate JWT    │
+│  Return user     │
+└──────────────────┘
+
+     OR
+
+┌──────────────────┐
+│  Social Service  │
+│                  │
+│  Option 2:       │
+│  Validate JWT    │
+│  Locally         │
+│  (JWT_SECRET)    │
+│  Faster!         │
+└──────────────────┘
+```
+
+---
+
+## 🛠️ Technology Stack
+
+### Core Technologies
+
+| Layer | Technology | Purpose |
+|-------|-----------|---------|
+| **Language** | Go 1.21+ | High performance, concurrency |
+| **Framework** | GoFiber v2 | Fast HTTP framework |
+| **Database** | PostgreSQL 14+ | Relational data storage |
+| **ORM** | GORM | Database abstraction |
+| **Event Bus** | NATS JetStream | Event-driven messaging |
+| **Cache** | Redis (planned) | Session, rate limiting |
+| **Metrics** | Prometheus | Monitoring |
+| **Logging** | Structured JSON | Observability |
+
+---
+
+### Libraries
 
 ```go
-// domain/models/oauth_provider.go
-type OAuthProvider struct {
-    ID             uuid.UUID
-    UserID         uuid.UUID
-    Provider       string      // "google", "facebook", "line"
-    ProviderID     string
-    AccessToken    string
-    RefreshToken   string
-    TokenExpiresAt *time.Time
-    ProfileData    datatypes.JSON
-    CreatedAt      time.Time
-    UpdatedAt      time.Time
-}
-```
+// HTTP Framework
+github.com/gofiber/fiber/v2
 
-#### DTOs (Data Transfer Objects)
-- `dto/auth.go` - Login, Register requests/responses
-- `dto/oauth.go` - OAuth URL, Callback, Exchange DTOs
-- `dto/user.go` - User response DTO
-- `dto/common.go` - Standard API response format
-- `dto/mappers.go` - Convert Models ↔ DTOs
+// Database
+gorm.io/gorm
+gorm.io/driver/postgres
 
-#### Repository Interfaces
-```go
-// domain/repositories/user_repository.go
-type UserRepository interface {
-    Create(user *models.User) error
-    FindByID(id uuid.UUID) (*models.User, error)
-    FindByEmail(email string) (*models.User, error)
-    FindByUsername(username string) (*models.User, error)
-    Update(user *models.User) error
-    Delete(id uuid.UUID) error
-}
-```
+// Event Bus
+github.com/nats-io/nats.go
 
-#### Service Interfaces
-```go
-// domain/services/user_service.go
-type UserService interface {
-    Register(req *dto.RegisterRequest) (*dto.AuthResponse, error)
-    Login(req *dto.LoginRequest) (*dto.AuthResponse, error)
-    GetUserByID(id uuid.UUID) (*dto.UserResponse, error)
-    // ...
-}
+// Authentication
+github.com/golang-jwt/jwt/v5
+golang.org/x/crypto/bcrypt
+
+// OAuth
+golang.org/x/oauth2
+google.golang.org/api/oauth2/v2
+
+// Validation
+github.com/go-playground/validator/v10
+
+// Monitoring
+github.com/prometheus/client_golang
 ```
 
 ---
 
-### 🟢 2. Application Layer (`application/`)
+## 📊 Database Schema
 
-**Business logic implementations**
+### Current (Auth Service)
 
-#### UserServiceImpl
-- Register (with password hashing)
-- Login (with JWT generation)
-- User CRUD operations
-- **Calls SyncService** to push user data to Backend
+```sql
+-- Users table (Auth Service owns)
+CREATE TABLE users (
+    id UUID PRIMARY KEY,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    username VARCHAR(100) UNIQUE NOT NULL,
+    password VARCHAR(255),              -- NULL for OAuth users
+    display_name VARCHAR(100),          -- TODO: Remove in V3
+    avatar TEXT,                        -- TODO: Remove in V3
+    role VARCHAR(50) DEFAULT 'user',
+    is_active BOOLEAN DEFAULT true,
+    is_oauth_user BOOLEAN DEFAULT false,
+    oauth_provider VARCHAR(50),
+    oauth_id VARCHAR(255),
+    email_verified BOOLEAN DEFAULT false,
+    last_login_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
 
-#### OAuthServiceImpl
-- Generate OAuth URLs (Google, Facebook, LINE)
-- Handle OAuth callbacks
-- Exchange authorization codes
-- **Calls UserService** for user creation
-- **Calls SyncService** to sync OAuth users
-
-#### SyncService
-- Push user data to Backend Service
-- HTTP POST with retry mechanism
-- Exponential backoff (1s, 2s, 4s)
-- Max retries: 3
-- Runs asynchronously (goroutine)
-
----
-
-### 🟡 3. Infrastructure Layer (`infrastructure/`)
-
-**External dependencies implementations**
-
-#### PostgreSQL (`infrastructure/postgres/`)
-- `database.go` - Database connection & migration
-- `user_repository_impl.go` - Implements UserRepository
-- `oauth_repository_impl.go` - Implements OAuthRepository
-
-**Connection Pool:**
-```go
-MaxIdleConns:    10
-MaxOpenConns:    100
-ConnMaxLifetime: 1 hour
-```
-
-#### Redis (`infrastructure/redis/`)
-- Redis client wrapper
-- Used for caching (planned)
-- Currently: Warning if connection fails, but app continues
-
-#### Storage (`infrastructure/storage/`)
-- Bunny CDN integration (planned for avatar uploads)
-
----
-
-### 🔴 4. Interfaces Layer (`interfaces/`)
-
-**HTTP API adapters**
-
-#### Handlers (`interfaces/api/handlers/`)
-- Parse HTTP requests
-- Validate input (DTOs)
-- Call services
-- Return HTTP responses
-- Error handling
-
-#### Middleware (`interfaces/api/middleware/`)
-
-**LoggerMiddleware:**
-- Log every request (method, path, status, latency)
-
-**CorsMiddleware:**
-```go
-AllowOrigins:     "http://localhost:3000,http://localhost:3030"
-AllowCredentials: true
-AllowMethods:     "GET,POST,PUT,DELETE,OPTIONS"
-```
-
-**AuthMiddleware:**
-- Extract JWT from `Authorization: Bearer <token>`
-- Validate JWT signature
-- Extract user ID and role
-- Store in context: `c.Locals("userID")`, `c.Locals("role")`
-
-**ErrorMiddleware:**
-- Catch all errors
-- Return standard error response
-
-#### Routes (`interfaces/api/routes/`)
-
-**Auth Routes:**
-```
-POST   /api/v1/auth/register
-POST   /api/v1/auth/login
-GET    /api/v1/auth/google
-GET    /api/v1/auth/google/callback
-POST   /api/v1/auth/exchange
-GET    /api/v1/auth/facebook
-GET    /api/v1/auth/facebook/callback
-GET    /api/v1/auth/line
-GET    /api/v1/auth/line/callback
-```
-
-**User Routes (Protected):**
-```
-GET    /api/v1/users/me          (Auth required)
-PUT    /api/v1/users/me          (Auth required)
-DELETE /api/v1/users/me          (Auth required)
-```
-
-**Health Routes:**
-```
-GET    /health
-GET    /
+-- OAuth providers
+CREATE TABLE oauth_providers (
+    id UUID PRIMARY KEY,
+    user_id UUID REFERENCES users(id),
+    provider VARCHAR(50) NOT NULL,
+    provider_id VARCHAR(255) NOT NULL,
+    access_token TEXT,
+    refresh_token TEXT,
+    token_expires_at TIMESTAMP,
+    profile_data JSONB,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW(),
+    UNIQUE(provider, provider_id)
+);
 ```
 
 ---
 
-### 🟣 5. Shared Packages (`pkg/`)
+### Recommended (Downstream Services)
 
-#### Config (`pkg/config/`)
-Loads configuration from `.env`:
-- App (Name, Port, Env, FrontendURL)
-- Database (Host, Port, User, Password, DBName)
-- Redis (Host, Port, Password, DB)
-- JWT (Secret)
-- OAuth (Google, Facebook, LINE credentials)
-- Bunny (CDN configuration)
+```sql
+-- Social Service owns
 
-#### DI Container (`pkg/di/`)
-**Dependency Injection Container** - จัดการ lifecycle ของ dependencies:
+-- Identity data (from Auth events)
+CREATE TABLE users_identity (
+    id UUID PRIMARY KEY,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    username VARCHAR(100) UNIQUE NOT NULL,
+    created_at TIMESTAMP,
+    updated_at TIMESTAMP
+);
 
-```go
-func (c *Container) Initialize() error {
-    1. initConfig()        // Load .env
-    2. initInfrastructure() // Connect DB, Redis
-    3. initRepositories()  // Create repo instances
-    4. initServices()      // Create service instances
-    5. initScheduler()     // Start background scheduler
-}
-```
-
-**Cleanup on shutdown:**
-- Stop scheduler
-- Close Redis connection
-- Close database connection
-
-#### Auth Code Store (`pkg/auth_code_store/`)
-**In-memory temporary storage** for OAuth authorization codes:
-- Stores: Token, User data, State
-- Expiry: 5 minutes
-- One-time use (deleted after exchange)
-- Auto-cleanup of expired codes
-
-#### Scheduler (`pkg/scheduler/`)
-Background event scheduler (currently used for cleanup tasks)
-
-#### Utils (`pkg/utils/`)
-- `jwt.go` - JWT generation & validation
-- `response.go` - Standard response helpers
-- `validator.go` - Input validation
-
----
-
-## Dependencies
-
-### External Dependencies (go.mod)
-
-**Framework:**
-- `github.com/gofiber/fiber/v2` - HTTP framework
-
-**Database:**
-- `gorm.io/gorm` - ORM
-- `gorm.io/driver/postgres` - PostgreSQL driver
-
-**Cache:**
-- `github.com/redis/go-redis/v9` - Redis client
-
-**Authentication:**
-- `github.com/golang-jwt/jwt/v5` - JWT
-- `golang.org/x/crypto/bcrypt` - Password hashing
-
-**OAuth:**
-- `golang.org/x/oauth2` - OAuth 2.0 client
-- `google.golang.org/api/oauth2/v2` - Google OAuth
-
-**Utilities:**
-- `github.com/google/uuid` - UUID generation
-- `github.com/joho/godotenv` - .env loader
-
----
-
-## Configuration
-
-### Environment Variables (`.env`)
-
-```env
-# Application
-APP_NAME=GoFiber Auth Service
-APP_PORT=8088
-APP_ENV=development
-FRONTEND_URL=http://localhost:3000
-
-# Database
-DB_HOST=localhost
-DB_PORT=5432
-DB_USER=postgres
-DB_PASSWORD=n147369
-DB_NAME=gofiber_auth
-DB_SSL_MODE=disable
-
-# Redis
-REDIS_HOST=localhost
-REDIS_PORT=6379
-REDIS_PASSWORD=
-REDIS_DB=0
-
-# JWT
-JWT_SECRET=Log2Window$P@ssWord
-
-# OAuth - Google
-GOOGLE_CLIENT_ID=xxx
-GOOGLE_CLIENT_SECRET=xxx
-GOOGLE_REDIRECT_URL=http://localhost:8088/api/v1/auth/google/callback
-
-# OAuth - Facebook
-FACEBOOK_CLIENT_ID=xxx
-FACEBOOK_CLIENT_SECRET=xxx
-FACEBOOK_REDIRECT_URL=http://localhost:8088/api/v1/auth/facebook/callback
-
-# OAuth - LINE
-LINE_CLIENT_ID=xxx
-LINE_CLIENT_SECRET=xxx
-LINE_REDIRECT_URL=http://localhost:8088/api/v1/auth/line/callback
-
-# Bunny CDN
-BUNNY_STORAGE_ZONE=
-BUNNY_ACCESS_KEY=
-BUNNY_BASE_URL=https://storage.bunnycdn.com
-BUNNY_CDN_URL=
+-- Profile data (Social Service manages)
+CREATE TABLE users_profile (
+    id UUID PRIMARY KEY REFERENCES users_identity(id),
+    display_name VARCHAR(100),
+    avatar TEXT,
+    bio TEXT,
+    location VARCHAR(100),
+    website VARCHAR(255),
+    followers_count INTEGER DEFAULT 0,
+    following_count INTEGER DEFAULT 0,
+    created_at TIMESTAMP,
+    updated_at TIMESTAMP
+);
 ```
 
 ---
 
-## Key Features
+## 🎯 Design Principles
 
-### ✅ Authentication
+### 1. **Single Responsibility**
+- Auth Service = Authentication & Authorization only
+- Profile data → Profile Service (future)
+- Social features → Social Service
 
-**Email/Password:**
-- Registration with email/username
-- Password hashing (bcrypt, cost: 10)
-- JWT token generation (HS256, 7-day expiry)
-- Login with email + password
+### 2. **Event-Driven Architecture**
+- Services communicate via events (NATS)
+- Loose coupling
+- Async processing
 
-**OAuth 2.0:**
-- Google, Facebook, LINE support
-- Authorization Code Exchange pattern
-- Account linking (OAuth → existing email)
-- CSRF protection (state parameter)
+### 3. **API-First Design**
+- REST API for synchronous operations
+- Events for asynchronous updates
+- Clear API contracts
 
-### ✅ Authorization
+### 4. **Clean Architecture**
+- Domain-centric design
+- Dependencies point inward
+- Framework-agnostic core
 
-**JWT-based:**
-- Middleware extracts & validates JWT
-- User ID and role stored in context
-- Protected routes require valid JWT
+### 5. **Observability**
+- Request ID tracking
+- Structured logging
+- Prometheus metrics
+- Distributed tracing ready
 
-**Roles:**
-- `user` (default)
-- `admin`
+---
 
-### ✅ User Sync
+## 📈 Scalability Considerations
 
-**Push Pattern:**
-- Async sync to Backend Service
-- HTTP POST to `/internal/users/sync`
-- Retry with exponential backoff
-- Actions: `created`, `updated`, `deleted`
+### Current Bottlenecks
 
-### ✅ Graceful Shutdown
+1. **Database** - PostgreSQL single instance
+   - **Solution:** Read replicas, Connection pooling
 
-**SIGTERM/SIGINT handling:**
-1. Stop scheduler
-2. Close Redis connection
-3. Close database connection
-4. Exit gracefully
+2. **NATS** - Single instance
+   - **Solution:** NATS clustering (future)
 
-### ✅ Health Check
+3. **JWT Validation** - Call Auth Service every time
+   - **Solution:** Validate locally with shared secret
+
+---
+
+### Horizontal Scaling
 
 ```
-GET /health
+                    Load Balancer
+                          │
+        ┌─────────────────┼─────────────────┐
+        │                 │                 │
+        ↓                 ↓                 ↓
+┌──────────────┐  ┌──────────────┐  ┌──────────────┐
+│ Auth Service │  │ Auth Service │  │ Auth Service │
+│  Instance 1  │  │  Instance 2  │  │  Instance 3  │
+└──────┬───────┘  └──────┬───────┘  └──────┬───────┘
+       │                 │                 │
+       └─────────────────┴─────────────────┘
+                         │
+                         ↓
+                  PostgreSQL
+                  (Shared DB)
+```
 
-Response:
-{
-  "status": "healthy",
-  "timestamp": "2024-11-23T10:00:00Z"
-}
+**Note:** Auth Service is stateless → easy to scale horizontally
+
+---
+
+## 🔐 Security Architecture
+
+```
+┌─────────────────────────────────────────┐
+│  API Gateway / Firewall                 │
+│  - Rate limiting                        │
+│  - DDoS protection                      │
+└─────────────────┬───────────────────────┘
+                  │
+                  ↓
+┌─────────────────────────────────────────┐
+│  Auth Service                           │
+│  - JWT generation                       │
+│  - Password hashing (bcrypt)            │
+│  - OAuth 2.0                            │
+│  - CORS policy                          │
+└─────────────────┬───────────────────────┘
+                  │
+                  ↓
+┌─────────────────────────────────────────┐
+│  Database (PostgreSQL)                  │
+│  - Encrypted connections (SSL)          │
+│  - Row-level security (future)          │
+│  - Audit logs                           │
+└─────────────────────────────────────────┘
 ```
 
 ---
 
-## How It Works
+## 📝 Next Steps
 
-### Startup Sequence
+### Short Term (1-2 months)
+- [ ] Add Redis for session management
+- [ ] Implement refresh token flow
+- [ ] Add rate limiting per user
+- [ ] Setup monitoring dashboard (Grafana)
+- [ ] Load testing
 
-```
-1. main.go
-   ↓
-2. NewContainer()
-   ↓
-3. container.Initialize()
-   ├─ Load Config (.env)
-   ├─ Connect Database (PostgreSQL)
-   ├─ Run Migrations (AutoMigrate)
-   ├─ Connect Redis
-   ├─ Initialize Repositories
-   ├─ Initialize Services
-   └─ Start Scheduler
-   ↓
-4. Create Fiber App
-   ↓
-5. Setup Middleware
-   ├─ Logger
-   ├─ CORS
-   └─ Error Handler
-   ↓
-6. Create Handlers (from Services)
-   ↓
-7. Setup Routes
-   ↓
-8. Start Server (Listen on port 8088)
-   ↓
-9. Setup Graceful Shutdown
-   └─ Listen for SIGTERM/SIGINT
-```
+### Medium Term (3-6 months)
+- [ ] Extract Profile Service
+- [ ] Implement API Gateway
+- [ ] Setup CI/CD pipeline
+- [ ] Kubernetes deployment
+- [ ] Database read replicas
 
-### Request Lifecycle
-
-```
-HTTP Request
-  ↓
-Middleware Chain
-  ├─ Logger (log request)
-  ├─ CORS (add headers)
-  └─ Auth (validate JWT if protected route)
-  ↓
-Route Matching
-  ↓
-Handler
-  ├─ Parse request body
-  ├─ Validate DTO
-  └─ Call Service
-  ↓
-Service (Business Logic)
-  ├─ Process data
-  ├─ Call Repository
-  └─ Sync to Backend (async)
-  ↓
-Repository
-  ├─ Query Database (GORM)
-  └─ Return Models
-  ↓
-Handler
-  ├─ Convert Model → DTO
-  └─ Return Response
-  ↓
-Middleware (Error Handler)
-  └─ Catch any errors
-  ↓
-HTTP Response
-```
+### Long Term (6-12 months)
+- [ ] Extract Social Service
+- [ ] Extract Notification Service
+- [ ] Implement service mesh (Istio/Linkerd)
+- [ ] Multi-region deployment
+- [ ] Advanced analytics
 
 ---
 
-## 🎯 Summary
+## 📚 Related Documentation
 
-| Layer | Directory | Responsibility |
-|-------|-----------|----------------|
-| **Entry Point** | `cmd/api/` | Start application |
-| **Interfaces** | `interfaces/api/` | HTTP handlers, routes, middleware |
-| **Application** | `application/` | Business logic implementations |
-| **Domain** | `domain/` | Models, DTOs, interfaces (core) |
-| **Infrastructure** | `infrastructure/` | Database, Redis, external services |
-| **Shared** | `pkg/` | Config, DI, utilities |
+- [SERVICE_INTEGRATION.md](./SERVICE_INTEGRATION.md) - Complete integration guide
+- [README.md](./README.md) - Quick start guide
+- [.env.example](./.env.example) - Environment variables
 
-**Key Principles:**
-- ✅ Clean Architecture (dependency inversion)
-- ✅ Dependency Injection (via DI Container)
-- ✅ Separation of Concerns (layers)
-- ✅ Interface-based design (easy to test)
-- ✅ SOLID principles
-- ✅ Graceful shutdown
-- ✅ Error handling at every layer
+---
 
-**Technology Stack:**
-- Language: Go 1.21
-- Framework: Fiber v2
-- Database: PostgreSQL 14
-- Cache: Redis 7
-- ORM: GORM
-- Auth: JWT (HS256)
-- Password: bcrypt
+**Architecture Version:** 2.0
+**Last Review:** 2025-11-24
+**Next Review:** 2025-12-24
 
-**Current Status:** ✅ Production-ready for Auth features
-**Next Steps:** See `microservice_plan/` for future microservices architecture
+---
+
+**สรุป:** Auth Service ตอนนี้เป็น **Microservice** แบบ Clean Architecture + Event-Driven ที่พร้อมสำหรับการ scale และแยก services เพิ่มเติมในอนาคต! 🚀
