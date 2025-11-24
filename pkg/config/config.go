@@ -78,10 +78,9 @@ type BunnyConfig struct {
 }
 
 func LoadConfig() (*Config, error) {
-	err := godotenv.Load()
-	if err != nil {
-		return nil, err
-	}
+	// Load .env file if exists (optional in production)
+	// In production, environment variables are provided by the platform
+	_ = godotenv.Load()
 
 	redisDB, _ := strconv.Atoi(getEnv("REDIS_DB", "0"))
 	natsMaxRetries, _ := strconv.Atoi(getEnv("NATS_MAX_RETRIES", "3"))
